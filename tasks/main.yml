@@ -1,0 +1,54 @@
+- name: Install Java
+  yum: >
+    name={{ item }}
+    state=present
+  with_items:
+    - java-1.7.0-openjdk
+  sudo: true
+  tags: [install, java]
+
+- name: Install yum packages
+  yum: name="{{ item }}" state=present
+  with_items:
+    - rsync
+  sudo: true
+
+- name: Download the DynamoDB local jar
+  get_url:
+    url="https://s3-us-west-2.amazonaws.com/dynamodb-local/dynamodb_local_{{ dynamodb_version }}.tar.gz"
+    sha256sum="{{ dynamodb_sha }}"
+    dest=/tmp
+  register: dynamodb_download
+  sudo: true
+
+- name: "Install DynamoDB in /opt/dynamodb"
+  shell: |
+    chdir=/tmp
+    mkdir dynamodb_local_{{ dynamodb_version }} && \
+    cd dynamodb_local_{{ dynamodb_version }} && \
+    tar -zxvf ../dynamodb_local_{{ dynamodb_version }}.tar.gz && \
+    mkdir -p /opt/dynamodb && \
+    rsync -av ./ /opt/dynamodb/ && \
+    rm -rf dynamodb_local_{{ dynamodb_version }}/
+  when: dynamodb_download.changed
+  sudo: true
+
+- name: Drop an init.d file for DynamoDB
+  template: >
+    src=dynamodb.init.sh
+    dest=/etc/init.d/dynamodb
+    mode=0700
+    owner=root
+    group=root
+  notify:
+    - Restart DynamoDB
+  sudo: true
+
+- name: Make sure DynamoDB local development is running
+  service: >
+    name=dynamodb
+    state=running
+    enabled=yes
+    runlevel=5
+    pattern="DynamoDBLocal.jar"
+  sudo: true
